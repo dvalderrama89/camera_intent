@@ -29,13 +29,23 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 
-
+/*
+ * Functionality:
+ * -Camera app that logs GPS data to an XML file and sets the last picture
+ * taken as the root view's background.
+ * 
+ * Known Issues/To do:
+ * -Background is cleared on intent cancellation
+ * -Need to use bundle to support rotations
+ * -GPS listener is active for too long(need to unbind during onPause/onStop) 
+ */
 public class MainActivity extends ActionBarActivity {
+	//Vars
 	private DialogFragment settingsFrag = new SettingsFragment();
 	private DialogFragment helpFrag = new HelpFragment();
 	private static final String PREFS_NAME = "CameraPreferences";
-	private static int num;
-	private static final int defaultNum = 0;
+	private static int photoNumber;
+	private static final int defaultPhotophotoNumber = 0;
 	private static double longitude = -1;
 	private static double latitude = -1;
 	private static LocationManager lm;
@@ -43,6 +53,9 @@ public class MainActivity extends ActionBarActivity {
 	private static String photoFilename = "";
 	private static String pathToXMLFile;
 	private static GPSToFile gpsToFile;
+	private static String mCurrentPhotoPath;
+	private static final int REQUEST_TAKE_PHOTO = 1;
+	
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -53,45 +66,38 @@ public class MainActivity extends ActionBarActivity {
 					.add(R.id.container, new PlaceholderFragment()).commit();
 		}
 		
-		// Restore preferences
+		// Restore photoNumber tag used in file creation
 		SharedPreferences settings = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
-		num = settings.getInt("storedPhotoNum", defaultNum);
+		photoNumber = settings.getInt("storedPhotophotoNumber", defaultPhotophotoNumber);
 		
 		//Start GPS listener
 		lm = (LocationManager)getSystemService(Context.LOCATION_SERVICE); 
 		startGPSListener();
 		
-		//create object to convert image data to xml
+		//Create object to convert image data to xml
 		gpsToFile = new GPSToFile();
 	}
 	
 	@Override
 	protected void onStop(){
 		super.onStop();
-		//We need an Editor object to make preference changes.
-		// All objects are from android.context.Context
+		//Use the editor to save the photoNumber tagged used (e.g. photo-001.jpg)
 		SharedPreferences settings = getSharedPreferences(PREFS_NAME, 0);
 		SharedPreferences.Editor editor = settings.edit();
-		editor.putInt("storedPhotoNum", num);
-
-		// Commit the edits!
+		editor.putInt("storedPhotophotoNumber", photoNumber);
 		editor.commit();
 	}
 	
 	@Override
 	protected void onDestroy(){
 		super.onDestroy();
-		//We need an Editor object to make preference changes.
-		// All objects are from android.context.Context
 		SharedPreferences settings = getSharedPreferences(PREFS_NAME, 0);
 		SharedPreferences.Editor editor = settings.edit();
-		editor.putInt("storedPhotoNum", num);
-
-		// Commit the edits!
+		editor.putInt("storedPhotophotoNumber", photoNumber);
 		editor.commit();
 	}
 	
-	static String mCurrentPhotoPath;
+	
 	private static File getOutputMediaFile() throws IOException {
         File mediaStorageDir = new File(
                 Environment
@@ -99,20 +105,20 @@ public class MainActivity extends ActionBarActivity {
                 "GPSPics");
         if (!mediaStorageDir.exists()) {
             if (!mediaStorageDir.mkdirs()) {
-                Log.d("app", "failed to create directory");
+                Log.d("File", "Failed to create directory");
                 return null;
             }
         }
         // Create a media file name
         File mediaFile;
-        photoFilename = "photo-" + String.format("%03d", num) + ".jpg";
+        photoFilename = "photo-" + String.format("%03d", photoNumber) + ".jpg";
         mediaFile = new File(mediaStorageDir.getPath() + File.separator
                 + photoFilename);
         mCurrentPhotoPath = mediaFile.toString();
         pathToXMLFile = mediaStorageDir.getPath() + File.separator + "PicListGPS.xml"; 
         return mediaFile;
     }
-	static final int REQUEST_TAKE_PHOTO = 1;
+	
 
 	private void dispatchTakePictureIntent() {
 	    Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
@@ -123,7 +129,7 @@ public class MainActivity extends ActionBarActivity {
 	        try {
 	            photoFile = getOutputMediaFile();
 	        } catch (IOException ex) {
-	        	Log.d("error", "error creating file");
+	        	Log.d("File", "Error creating file");
 	        }
 	        // Continue only if the File was successfully created
 	        if (photoFile != null) {
@@ -134,15 +140,22 @@ public class MainActivity extends ActionBarActivity {
 	    }
 	}
 	
+	//Corresponds to the Button at the bottom of the layout
 	public void doTakePhoto(View view)
 	{
 		dispatchTakePictureIntent();
 	}
 	protected void onActivityResult(int requestCode, int resultCode, Intent data)
 	{
+		//Creates a scaled bitmap which is then converted into a drawable and set as the 
+		//parent view's background image
 		scaleAndSetPicture();
+		
 		//Write image data to file
 		gpsToFile.toXML(photoFilename, pathToXMLFile,  latitude, longitude);
+		
+		//file is normally written as 'photo-001.jpg' so need to increment the photo counter
+		photoNumber++;
 	}
 	
 	private void scaleAndSetPicture() {
@@ -166,14 +179,15 @@ public class MainActivity extends ActionBarActivity {
 	    bmOptions.inSampleSize = scaleFactor;
 	    bmOptions.inPurgeable = true;
 
+	    //Create the drawable from the bitmap
 	    Bitmap bitmap = BitmapFactory.decodeFile(mCurrentPhotoPath, bmOptions);
 	    Drawable d = new BitmapDrawable(bitmap);
+	    //Display the drawable on the layout background
 	    mImageView.setBackgroundDrawable(d);
 	}
 
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
-
 		// Inflate the menu; this adds items to the action bar if it is present.
 		MenuInflater inflater = getMenuInflater();
 	    inflater.inflate(R.menu.main, menu);
@@ -183,33 +197,18 @@ public class MainActivity extends ActionBarActivity {
 	private void startGPSListener(){
 		LocationListener locationListener = new LocationListener() {
 			public void onLocationChanged(Location location) {
-				Log.d("listener", "listening");
+				//Log.d("listener", "listening");
 				longitude = location.getLongitude();
 				latitude = location.getLatitude();
 			}
-
 			@Override
-			public void onProviderDisabled(String arg0) {
-				// TODO Auto-generated method stub
-				
-			}
-
+			public void onProviderDisabled(String arg0) {}
 			@Override
-			public void onProviderEnabled(String arg0) {
-				// TODO Auto-generated method stub
-				
-				
-			}
-
+			public void onProviderEnabled(String arg0) {}
 			@Override
-			public void onStatusChanged(String arg0, int arg1, Bundle arg2) {
-				// TODO Auto-generated method stub
-				
-			}
+			public void onStatusChanged(String arg0, int arg1, Bundle arg2) {}
 		};
-		lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
-		
-		Log.d("listener", "listener end");
+		lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000, 0, locationListener);
 	}
 	@Override
 	public boolean onOptionsItemSelected(MenuItem item) {
@@ -219,30 +218,27 @@ public class MainActivity extends ActionBarActivity {
 		// Handle presses on the action bar items
 	    switch (item.getItemId()) {
 	        case R.id.action_settings:
-	        	Log.d("settings", "settings pressed");
+	        	//Log.d("settings", "settings pressed");
 	        	settingsFrag.show(getSupportFragmentManager(), "settingsFragment");
 	            return true;
 	        case R.id.action_takephoto:	        	
-	            Log.d("photo", String.format("%03d", num));
-	            num++;
-	            //Get current or last known coords
-	            //startGPSListener();
-	            if(currentLocation != null){
-	            	
+	            //Get current or last known coordinates before launching the camera intent
+	            try{
+	            
 	            	currentLocation = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
 	            	longitude = currentLocation.getLongitude();
 	            	latitude = currentLocation.getLatitude();
-	            	Log.d("longitude", "longitude " + longitude);
-	            	Log.d("latitude", "latitude " + latitude);
 	            }
-	            else{
-	            	Log.d("gpserr", "current gps location is null");
-	            	Log.d("curlong", "curr long " + longitude);
-	            	Log.d("currlat", "curr lat " + latitude);
+	            catch(NullPointerException e){
+	            	Log.d("GPS", "getLastKnownLocation() returned NULL");
+	            	e.printStackTrace();
 	            }
+	            //Launch camera intent
+	        	dispatchTakePictureIntent();
+	            
 	            return true;
 	        case R.id.action_help:
-	        	Log.d("help", "help pressed");
+	        	//Log.d("help", "help pressed");
 	        	helpFrag.show(getSupportFragmentManager(), "helpFragment");
 	        	return true;
 	        default:
@@ -255,9 +251,7 @@ public class MainActivity extends ActionBarActivity {
 	 */
 	public static class PlaceholderFragment extends Fragment {
 
-		public PlaceholderFragment() {
-		}
-
+		public PlaceholderFragment() {}
 		@Override
 		public View onCreateView(LayoutInflater inflater, ViewGroup container,
 				Bundle savedInstanceState) {

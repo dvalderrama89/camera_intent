@@ -11,6 +11,18 @@ public class GPSToFile {
 	private static String pathToXMLFile = "";
 	
 	public GPSToFile(){}
+	
+	/*
+	 * File output will be formatted like this:
+	 * 
+	 * <image>
+	 * <name>photo-001.jpg</name>
+	 * <lat>34.4208333</lat>
+	 * <long>119.6972222</long>
+	 * </image>
+	 * 
+	 * ...etc
+	 */
 	public void toXML(String filename, String pathToXMLFile, double latitude, double longitude)
 	{
 		textToXML += "<image>\n<name>" + filename + "</name>\n<lat>" + latitude + "</lat>\n";
